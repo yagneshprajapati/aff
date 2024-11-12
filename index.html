@@ -65,7 +65,6 @@
             populateVoiceList();
             speechSynthesis.onvoiceschanged = populateVoiceList;
             document.getElementById("constantTone").addEventListener("change", handleConstantToneChange);
-            showDailyAffirmation();
         };
 
         function populateVoiceList() {
@@ -149,43 +148,84 @@
         }
 
         function startBinauralBeats() {
+            if (audioContext) audioContext.close(); // Close any previous context to avoid issues
             audioContext = new (window.AudioContext || window.webkitAudioContext)();
 
             const leftFrequency = parseFloat(document.getElementById('leftEarFreq').value);
             const rightFrequency = parseFloat(document.getElementById('rightEarFreq').value);
 
+            // Initialize oscillators for left and right ears
             leftOscillator = audioContext.createOscillator();
             rightOscillator = audioContext.createOscillator();
 
             leftOscillator.frequency.value = leftFrequency;
             rightOscillator.frequency.value = rightFrequency;
 
+            // Create gain nodes for volume control
             const leftGain = audioContext.createGain();
             const rightGain = audioContext.createGain();
 
-            const splitter = audioContext.createChannelSplitter(2);
-            const merger = audioContext.createChannelMerger(2);
+            leftGain.gain.value = 0.1; // Set volume level (0.1 = 10% volume)
+            rightGain.gain.value = 0.1;
 
-            leftOscillator.connect(leftGain).connect(splitter, 0, 0);
-            rightOscillator.connect(rightGain).connect(splitter, 1, 1);
+            // Pan the sound to create binaural effect
+            const leftPanner = audioContext.createStereoPanner();
+            const rightPanner = audioContext.createStereoPanner();
 
-            splitter.connect(merger, 0, 0);
-            splitter.connect(merger, 1, 1);
+            leftPanner.pan.value = -1;
+            rightPanner.pan.value = 1;
 
-            merger.connect(audioContext.destination);
+            // Connect the oscillators to the respective gain and panner nodes
+            leftOscillator.connect(leftGain).connect(leftPanner).connect(audioContext.destination);
+            rightOscillator.connect(rightGain).connect(rightPanner).connect(audioContext.destination);
 
+            // Start oscillators
             leftOscillator.start();
             rightOscillator.start();
+
+            // Handle constant tone (optional background tone)
+            const toneValue = document.getElementById("constantTone").value === "custom" ? 
+                              parseFloat(document.getElementById("customTone").value) : 
+                              parseFloat(document.getElementById("constantTone").value);
+            if (toneValue > 0) {
+                constantOscillator = audioContext.createOscillator();
+                constantOscillator.frequency.value = toneValue;
+
+                const constantGain = audioContext.createGain();
+                constantGain.gain.value = 0.1; // Set constant tone volume
+
+                constantOscillator.connect(constantGain).connect(audioContext.destination);
+                constantOscillator.start();
+            }
         }
 
         function stopBinauralBeats() {
-            if (leftOscillator && rightOscillator) {
-                leftOscillator.stop();
-                rightOscillator.stop();
-                audioContext.close();
-                audioContext = null;
-            }
-            clearInterval(loopInterval);
+            if (leftOscillator) leftOscillator.stop();
+            if (rightOscillator) rightOscillator.stop();
+            if (constantOscillator) constantOscillator.stop();
+
+            if (audioContext) audioContext.close();
+        }
+
+        function exportData() {
+            const affirmations = localStorage.getItem('affirmations') || '[]';
+            const blob = new Blob([affirmations], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'affirmations.json';
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function importData(event) {
+            const file = event.target.files[0];
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                localStorage.setItem('affirmations', e.target.result);
+                loadAffirmations();
+            };
+            reader.readAsText(file);
         }
     </script>
 </body>
