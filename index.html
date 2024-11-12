@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Affirmation Teller with Binaural Beats</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
+        h1, h2 { color: #4CAF50; }
+        button { margin: 5px 0; padding: 10px; background-color: #4CAF50; color: white; border: none; cursor: pointer; }
+        button:hover { background-color: #45a049; }
+        #affirmationsList { margin-top: 10px; }
+        .affirmation { margin: 5px 0; display: flex; align-items: center; }
+        .affirmation button { margin-left: 10px; }
+    </style>
+</head>
+<body>
+
+    <h1>Advanced Affirmation Teller</h1>
+
+    <!-- Voice Selection -->
+    <label for="voiceSelect">Choose a Voice:</label>
+    <select id="voiceSelect"></select>
+
+    <!-- Binaural Beat Controls -->
+    <h2>Binaural Beat Settings</h2>
+    <label for="leftEarFreq">Left Ear Frequency (Hz):</label>
+    <input type="number" id="leftEarFreq" step="0.01" min="0" value="210"><br>
+    
+    <label for="rightEarFreq">Right Ear Frequency (Hz):</label>
+    <input type="number" id="rightEarFreq" step="0.01" min="0" value="215"><br>
+    
+    <label for="constantTone">Constant Tone (Hz):</label>
+    <select id="constantTone">
+        <option value="7.83">7.83 Hz - Earth's Schumann Resonance</option>
+        <option value="432">432 Hz - Natural Healing Frequency</option>
+        <option value="528">528 Hz - DNA Repair Frequency</option>
+        <option value="0">None</option>
+        <option value="custom">Custom</option>
+    </select>
+    <input type="number" id="customTone" step="0.01" min="0" style="display: none;" placeholder="Enter custom Hz">
+
+    <!-- Add Affirmation -->
+    <h2>Enter a New Affirmation:</h2>
+    <textarea id="affirmationInput" rows="3" cols="30" placeholder="Enter your affirmation here..."></textarea><br>
+    <button onclick="saveAffirmation()">Save Affirmation</button>
+
+    <!-- Affirmations List -->
+    <h2>Your Affirmations:</h2>
+    <div id="affirmationsList"></div>
+    <button onclick="speakAllAffirmations()">Play All in Loop</button>
+
+    <!-- Export / Import Data -->
+    <h2>Backup & Restore:</h2>
+    <button onclick="exportData()">Export Affirmations</button>
+    <input type="file" onchange="importData(event)" />
+
+    <script>
+        let audioContext;
+        let leftOscillator, rightOscillator, constantOscillator;
+        let loopInterval;
+
+        window.onload = () => {
+            loadAffirmations();
+            populateVoiceList();
+            speechSynthesis.onvoiceschanged = populateVoiceList;
+            document.getElementById("constantTone").addEventListener("change", handleConstantToneChange);
+            showDailyAffirmation();
+        };
+
+        function populateVoiceList() {
+            const voices = speechSynthesis.getVoices();
+            const voiceSelect = document.getElementById('voiceSelect');
+            voiceSelect.innerHTML = '';
+            voices.forEach((voice, index) => {
+                const option = document.createElement('option');
+                option.value = index;
+                option.textContent = `${voice.name} (${voice.lang})${voice.default ? ' [Default]' : ''}`;
+                voiceSelect.appendChild(option);
+            });
+        }
+
+        function saveAffirmation() {
+            const text = document.getElementById('affirmationInput').value.trim();
+            if (!text) return alert("Please enter an affirmation.");
+
+            let affirmations = JSON.parse(localStorage.getItem('affirmations')) || [];
+            affirmations.push(text);
+            localStorage.setItem('affirmations', JSON.stringify(affirmations));
+            document.getElementById('affirmationInput').value = '';
+            loadAffirmations();
+        }
+
+        function loadAffirmations() {
+            const affirmations = JSON.parse(localStorage.getItem('affirmations')) || [];
+            const list = document.getElementById('affirmationsList');
+            list.innerHTML = affirmations.map((text, index) => 
+                `<div class="affirmation">- ${text} 
+                    <button onclick="speakText('${text}')">Play</button>
+                    <button onclick="deleteAffirmation(${index})">Delete</button>
+                </div>`
+            ).join('');
+        }
+
+        function deleteAffirmation(index) {
+            let affirmations = JSON.parse(localStorage.getItem('affirmations')) || [];
+            affirmations.splice(index, 1);
+            localStorage.setItem('affirmations', JSON.stringify(affirmations));
+            loadAffirmations();
+        }
+
+        function speakText(text) {
+            const voices = speechSynthesis.getVoices();
+            const selectedVoiceIndex = document.getElementById('voiceSelect').value;
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.voice = voices[selectedVoiceIndex];
+            utterance.rate = 0.9;
+
+            if (document.getElementById("constantTone").value !== "0") {
+                startBinauralBeats();
+                utterance.onend = stopBinauralBeats;
+            }
+            speechSynthesis.speak(utterance);
+        }
+
+        function speakAllAffirmations() {
+            const affirmations = JSON.parse(localStorage.getItem('affirmations')) || [];
+            let currentIndex = 0;
+
+            function playNext() {
+                if (currentIndex < affirmations.length) {
+                    speakText(affirmations[currentIndex]);
+                    currentIndex++;
+                } else {
+                    currentIndex = 0;
+                }
+            }
+            loopInterval = setInterval(playNext, 3000);
+        }
+
+        function handleConstantToneChange() {
+            const toneValue = document.getElementById("constantTone").value;
+            const customTone = document.getElementById("customTone");
+            if (toneValue === "custom") {
+                customTone.style.display = "inline";
+            } else {
+                customTone.style.display = "none";
+            }
+        }
+
+        function startBinauralBeats() {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+            const leftFrequency = parseFloat(document.getElementById('leftEarFreq').value);
+            const rightFrequency = parseFloat(document.getElementById('rightEarFreq').value);
+
+            leftOscillator = audioContext.createOscillator();
+            rightOscillator = audioContext.createOscillator();
+
+            leftOscillator.frequency.value = leftFrequency;
+            rightOscillator.frequency.value = rightFrequency;
+
+            const leftGain = audioContext.createGain();
+            const rightGain = audioContext.createGain();
+
+            const splitter = audioContext.createChannelSplitter(2);
+            const merger = audioContext.createChannelMerger(2);
+
+            leftOscillator.connect(leftGain).connect(splitter, 0, 0);
+            rightOscillator.connect(rightGain).connect(splitter, 1, 1);
+
+            splitter.connect(merger, 0, 0);
+            splitter.connect(merger, 1, 1);
+
+            merger.connect(audioContext.destination);
+
+            leftOscillator.start();
+            rightOscillator.start();
+        }
+
+        function stopBinauralBeats() {
+            if (leftOscillator && rightOscillator) {
+                leftOscillator.stop();
+                rightOscillator.stop();
+                audioContext.close();
+                audioContext = null;
+            }
+            clearInterval(loopInterval);
+        }
+    </script>
+</body>
+</html>
